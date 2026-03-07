@@ -26,7 +26,9 @@
 #include "vm_handlers/h_mem.h"    /* LOAD/STORE 8/32/64 */
 #include "vm_handlers/h_mov.h"    /* MOV_IMM, MOV_IMM32, MOV_REG */
 #include "vm_handlers/h_stack.h"  /* PUSH, POP */
+#include "vm_handlers/h_stack_ops.h" /* 栈机器操作 handler (VLOAD/VSTORE/VADD...) */
 #include "vm_handlers/h_system.h" /* NOP, CALL_NAT, BR_REG, VLD16, VST16 */
+
 
 /* ---- 间接 Dispatch 跳转表 (条件编译) ---- */
 #ifdef VM_INDIRECT_DISPATCH

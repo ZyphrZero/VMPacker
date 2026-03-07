@@ -128,4 +128,69 @@
 #define OP_ADC 0x2C /* ADC Xd, Xn, Xm              4B: [op][d][n][m] */
 #define OP_SBC 0x2D /* SBC Xd, Xn, Xm              4B: [op][d][n][m] */
 
+/* ================================================================
+ * 栈机器操作码 (Stack Machine Opcodes)
+ *
+ * 所有 S_* 操作码操作 eval_stk[] 操作栈，
+ * 操作数隐式从栈顶取，结果 push 回栈顶。
+ * 彻底消除寄存器冲突问题。
+ *
+ * 值域选择: 仅使用与旧 register-based 操作码不冲突的空闲字节值。
+ * ================================================================ */
+
+/* ---- 栈 ↔ 寄存器传输 ---- */
+#define OP_S_VLOAD 0x01  /* push R[r]             2B: [op][r] */
+#define OP_S_VSTORE 0x02 /* pop → R[r]            2B: [op][r] */
+
+/* ---- 栈立即数 ---- */
+#define OP_S_PUSH_IMM32 0x03 /* push imm32            5B: [op][imm32] */
+#define OP_S_PUSH_IMM64 0x04 /* push imm64            9B: [op][imm64] */
+
+/* ---- 栈控制 ---- */
+#define OP_S_DUP 0x05  /* dup 栈顶              1B */
+#define OP_S_SWAP 0x06 /* swap 栈顶两元素       1B */
+#define OP_S_DROP 0x07 /* pop 丢弃              1B */
+
+/* ---- 栈 ALU (二元: pop b, pop a, push result) ---- */
+#define OP_S_ADD 0x09   /* push a+b              1B */
+#define OP_S_SUB 0x0A   /* push a-b              1B */
+#define OP_S_MUL 0x0B   /* push a*b              1B */
+#define OP_S_XOR 0x0C   /* push a^b              1B */
+#define OP_S_AND 0x0D   /* push a&b              1B */
+#define OP_S_OR 0x0E    /* push a|b              1B */
+#define OP_S_SHL 0x0F   /* push a<<b             1B */
+#define OP_S_SHR 0x10   /* push a>>b (logical)   1B */
+#define OP_S_ASR 0x11   /* push a>>b (arith)     1B */
+#define OP_S_ROR 0x12   /* push ror(a,b)         1B */
+#define OP_S_UMULH 0x13 /* push umulh(a,b)       1B */
+#define OP_S_SMULH 0x14 /* push smulh(a,b)       1B */
+#define OP_S_UDIV 0x7B  /* push a/b (unsigned)   1B */
+#define OP_S_SDIV 0x7C  /* push a/b (signed)     1B */
+#define OP_S_ADC 0x7D   /* push a+b+carry        1B */
+#define OP_S_SBC 0x7E   /* push a-b-(1-carry)    1B */
+
+/* ---- 栈 ALU (一元: pop a, push result) ---- */
+#define OP_S_NOT 0x7F     /* push ~a               1B */
+#define OP_S_CLZ 0x80     /* push clz(a)           1B */
+#define OP_S_CLS 0x81     /* push cls(a)           1B */
+#define OP_S_RBIT 0x82    /* push rbit(a)          1B */
+#define OP_S_REV 0x84     /* push bswap64(a)       1B */
+#define OP_S_REV16 0x85   /* push rev16(a)         1B */
+#define OP_S_REV32 0x86   /* push rev32(a)         1B */
+#define OP_S_TRUNC32 0x87 /* push a & 0xFFFFFFFF   1B */
+#define OP_S_SEXT32 0x88  /* push sext32(a)        1B */
+
+/* ---- 栈比较 ---- */
+#define OP_S_CMP 0x89 /* pop b,a → set flags   1B */
+
+/* ---- 栈内存访问 (pop addr, push/pop value) ---- */
+#define OP_S_LD8 0x8A  /* pop addr → push *(u8*)addr   1B */
+#define OP_S_LD16 0x8B /* pop addr → push *(u16*)addr  1B */
+#define OP_S_LD32 0x92 /* pop addr → push *(u32*)addr  1B */
+#define OP_S_LD64 0x93 /* pop addr → push *(u64*)addr  1B */
+#define OP_S_ST8 0x94  /* pop val,addr → *(u8*)addr=val   1B */
+#define OP_S_ST16 0x95 /* pop val,addr → *(u16*)addr=val  1B */
+#define OP_S_ST32 0x96 /* pop val,addr → *(u32*)addr=val  1B */
+#define OP_S_ST64 0x97 /* pop val,addr → *(u64*)addr=val  1B */
+
 #endif /* VM_OPCODES_H */

@@ -322,6 +322,147 @@ __attribute__((noinline)) VM_SECTION_ALU static u32 hw_sbc(vm_ctx_t *vm) {
 }
 
 /* ================================================================
+ * 栈机器 (Stack Machine) Handler Wrappers
+ * ================================================================ */
+
+/* ---- 栈传输 ---- */
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_vload(vm_ctx_t *vm) {
+  return h_s_vload(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_vstore(vm_ctx_t *vm) {
+  return h_s_vstore(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32
+hw_s_push_imm32(vm_ctx_t *vm) {
+  return h_s_push_imm32(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32
+hw_s_push_imm64(vm_ctx_t *vm) {
+  return h_s_push_imm64(vm);
+}
+
+/* ---- 栈控制 ---- */
+__attribute__((noinline)) VM_SECTION_SYSTEM static u32 hw_s_dup(vm_ctx_t *vm) {
+  return h_s_dup(vm);
+}
+__attribute__((noinline)) VM_SECTION_SYSTEM static u32 hw_s_swap(vm_ctx_t *vm) {
+  return h_s_swap(vm);
+}
+__attribute__((noinline)) VM_SECTION_SYSTEM static u32 hw_s_drop(vm_ctx_t *vm) {
+  return h_s_drop(vm);
+}
+
+/* ---- 栈 ALU 二元 ---- */
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_add(vm_ctx_t *vm) {
+  return h_s_add(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_sub(vm_ctx_t *vm) {
+  return h_s_sub(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_mul(vm_ctx_t *vm) {
+  return h_s_mul(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_xor(vm_ctx_t *vm) {
+  return h_s_xor(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_and(vm_ctx_t *vm) {
+  return h_s_and(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_or(vm_ctx_t *vm) {
+  return h_s_or(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_shl(vm_ctx_t *vm) {
+  return h_s_shl(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_shr(vm_ctx_t *vm) {
+  return h_s_shr(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_asr(vm_ctx_t *vm) {
+  return h_s_asr(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_ror(vm_ctx_t *vm) {
+  return h_s_ror(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_umulh(vm_ctx_t *vm) {
+  return h_s_umulh(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_smulh(vm_ctx_t *vm) {
+  return h_s_smulh(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_udiv(vm_ctx_t *vm) {
+  return h_s_udiv(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_sdiv(vm_ctx_t *vm) {
+  return h_s_sdiv(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_adc(vm_ctx_t *vm) {
+  return h_s_adc(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_sbc(vm_ctx_t *vm) {
+  return h_s_sbc(vm);
+}
+
+/* ---- 栈 ALU 一元 ---- */
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_not(vm_ctx_t *vm) {
+  return h_s_not(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_clz(vm_ctx_t *vm) {
+  return h_s_clz(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_cls(vm_ctx_t *vm) {
+  return h_s_cls(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_rbit(vm_ctx_t *vm) {
+  return h_s_rbit(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_rev(vm_ctx_t *vm) {
+  return h_s_rev(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_rev16(vm_ctx_t *vm) {
+  return h_s_rev16(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_rev32(vm_ctx_t *vm) {
+  return h_s_rev32(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_trunc32(vm_ctx_t *vm) {
+  return h_s_trunc32(vm);
+}
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_sext32(vm_ctx_t *vm) {
+  return h_s_sext32(vm);
+}
+
+/* ---- 栈比较 ---- */
+__attribute__((noinline)) VM_SECTION_ALU static u32 hw_s_cmp(vm_ctx_t *vm) {
+  return h_s_cmp(vm);
+}
+
+/* ---- 栈内存 ---- */
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_ld8(vm_ctx_t *vm) {
+  return h_s_ld8(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_ld16(vm_ctx_t *vm) {
+  return h_s_ld16(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_ld32(vm_ctx_t *vm) {
+  return h_s_ld32(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_ld64(vm_ctx_t *vm) {
+  return h_s_ld64(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_st8(vm_ctx_t *vm) {
+  return h_s_st8(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_st16(vm_ctx_t *vm) {
+  return h_s_st16(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_st32(vm_ctx_t *vm) {
+  return h_s_st32(vm);
+}
+__attribute__((noinline)) VM_SECTION_MEM static u32 hw_s_st64(vm_ctx_t *vm) {
+  return h_s_st64(vm);
+}
+
+/* ================================================================
  * 跳转表运行时初始化 (绝对函数指针)
  *
  * 使用循环填充默认值，避免 GCC 范围初始化器
@@ -440,6 +581,49 @@ __attribute__((noinline)) static void vm_init_jump_table(vm_handler_fn *tbl) {
   /* ADC/SBC */
   tbl[OP_ADC] = hw_adc;
   tbl[OP_SBC] = hw_sbc;
+
+  /* ---- 栈机器操作码 ---- */
+  tbl[OP_S_VLOAD] = hw_s_vload;
+  tbl[OP_S_VSTORE] = hw_s_vstore;
+  tbl[OP_S_PUSH_IMM32] = hw_s_push_imm32;
+  tbl[OP_S_PUSH_IMM64] = hw_s_push_imm64;
+  tbl[OP_S_DUP] = hw_s_dup;
+  tbl[OP_S_SWAP] = hw_s_swap;
+  tbl[OP_S_DROP] = hw_s_drop;
+  tbl[OP_S_ADD] = hw_s_add;
+  tbl[OP_S_SUB] = hw_s_sub;
+  tbl[OP_S_MUL] = hw_s_mul;
+  tbl[OP_S_XOR] = hw_s_xor;
+  tbl[OP_S_AND] = hw_s_and;
+  tbl[OP_S_OR] = hw_s_or;
+  tbl[OP_S_SHL] = hw_s_shl;
+  tbl[OP_S_SHR] = hw_s_shr;
+  tbl[OP_S_ASR] = hw_s_asr;
+  tbl[OP_S_ROR] = hw_s_ror;
+  tbl[OP_S_UMULH] = hw_s_umulh;
+  tbl[OP_S_SMULH] = hw_s_smulh;
+  tbl[OP_S_UDIV] = hw_s_udiv;
+  tbl[OP_S_SDIV] = hw_s_sdiv;
+  tbl[OP_S_ADC] = hw_s_adc;
+  tbl[OP_S_SBC] = hw_s_sbc;
+  tbl[OP_S_NOT] = hw_s_not;
+  tbl[OP_S_CLZ] = hw_s_clz;
+  tbl[OP_S_CLS] = hw_s_cls;
+  tbl[OP_S_RBIT] = hw_s_rbit;
+  tbl[OP_S_REV] = hw_s_rev;
+  tbl[OP_S_REV16] = hw_s_rev16;
+  tbl[OP_S_REV32] = hw_s_rev32;
+  tbl[OP_S_TRUNC32] = hw_s_trunc32;
+  tbl[OP_S_SEXT32] = hw_s_sext32;
+  tbl[OP_S_CMP] = hw_s_cmp;
+  tbl[OP_S_LD8] = hw_s_ld8;
+  tbl[OP_S_LD16] = hw_s_ld16;
+  tbl[OP_S_LD32] = hw_s_ld32;
+  tbl[OP_S_LD64] = hw_s_ld64;
+  tbl[OP_S_ST8] = hw_s_st8;
+  tbl[OP_S_ST16] = hw_s_st16;
+  tbl[OP_S_ST32] = hw_s_st32;
+  tbl[OP_S_ST64] = hw_s_st64;
 }
 
 #endif /* VM_INDIRECT_DISPATCH */

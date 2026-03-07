@@ -106,6 +106,52 @@ static inline u8 vm_insn_size(u8 op) {
     return 9;
   case OP_MOV_IMM:
     return 10;
+  /* ---- 栈机器操作码 ---- */
+  case OP_S_DUP:
+  case OP_S_SWAP:
+  case OP_S_DROP:
+  case OP_S_ADD:
+  case OP_S_SUB:
+  case OP_S_MUL:
+  case OP_S_XOR:
+  case OP_S_AND:
+  case OP_S_OR:
+  case OP_S_SHL:
+  case OP_S_SHR:
+  case OP_S_ASR:
+  case OP_S_ROR:
+  case OP_S_UMULH:
+  case OP_S_SMULH:
+  case OP_S_UDIV:
+  case OP_S_SDIV:
+  case OP_S_ADC:
+  case OP_S_SBC:
+  case OP_S_NOT:
+  case OP_S_CLZ:
+  case OP_S_CLS:
+  case OP_S_RBIT:
+  case OP_S_REV:
+  case OP_S_REV16:
+  case OP_S_REV32:
+  case OP_S_TRUNC32:
+  case OP_S_SEXT32:
+  case OP_S_CMP:
+  case OP_S_LD8:
+  case OP_S_LD16:
+  case OP_S_LD32:
+  case OP_S_LD64:
+  case OP_S_ST8:
+  case OP_S_ST16:
+  case OP_S_ST32:
+  case OP_S_ST64:
+    return 1;
+  case OP_S_VLOAD:
+  case OP_S_VSTORE:
+    return 2;
+  case OP_S_PUSH_IMM32:
+    return 5;
+  case OP_S_PUSH_IMM64:
+    return 9;
   default:
     return 0;
   }

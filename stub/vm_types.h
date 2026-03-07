@@ -16,11 +16,12 @@ typedef long long i64;
 typedef short i16;
 
 /* ---- VM 配置常量 ---- */
-#define VM_REG_COUNT 32       /* X0-X30, X31=SP */
-#define VM_STACK_SIZE 32      /* PUSH/POP 操作栈深度 */
-#define VM_MEM_STACK 16384    /* 内存栈 (SP 指向的空间, 16KB) */
-#define VM_BYTECODE_MAX 65536 /* 最大字节码长度 (64KB, 含映射表) */
-#define VM_SIMD_BUF 64        /* SIMD 临时缓冲大小 */
+#define VM_REG_COUNT 32        /* X0-X30, X31=SP */
+#define VM_STACK_SIZE 32       /* PUSH/POP 操作栈深度 */
+#define VM_EVAL_STACK_SIZE 256 /* 栈机器操作栈深度 */
+#define VM_MEM_STACK 16384     /* 内存栈 (SP 指向的空间, 16KB) */
+#define VM_BYTECODE_MAX 65536  /* 最大字节码长度 (64KB, 含映射表) */
+#define VM_SIMD_BUF 64         /* SIMD 临时缓冲大小 */
 
 /* ---- 标志位 (NZCV 简化) ---- */
 #define FL_ZERO 1  /* Z: 结果为零 */
@@ -51,9 +52,13 @@ typedef struct {
   u8 *bc;
   u32 bc_len;
 
-  /* PUSH/POP 操作栈 */
+  /* PUSH/POP 操作栈 (旧 register-based 兼容) */
   u64 stk[VM_STACK_SIZE];
   int sp;
+
+  /* 栈机器操作栈 (Stack Machine eval stack) */
+  u64 eval_stk[VM_EVAL_STACK_SIZE];
+  int eval_sp; /* 栈顶指针, -1 = 空 */
 
   /* 内存栈 (R[31] 指向这里的末尾) */
   u8 vm_stk[VM_MEM_STACK];
@@ -68,10 +73,10 @@ typedef struct {
   u32 map_count;              /* 映射表条目数 */
 
   /* OpcodeCryptor: 逐指令 opcode 加密 */
-  u32 oc_key;                 /* opcode 加密密钥 (4B, 从 trailer 读取) */
+  u32 oc_key; /* opcode 加密密钥 (4B, 从 trailer 读取) */
 
   /* PC 反向遍历 */
-  u8 reverse;                 /* 1=反向执行 (pc 递减), 0=正向 */
+  u8 reverse; /* 1=反向执行 (pc 递减), 0=正向 */
 } vm_ctx_t;
 
 /* ---- SP 栈边界检查 ---- */
@@ -103,6 +108,7 @@ static inline void vm_ctx_init(vm_ctx_t *vm, u64 *args, u8 *bytecode, u32 len) {
   vm->FL = 0;
   vm->pc = 0;
   vm->sp = 0;
+  vm->eval_sp = -1; /* 栈机器操作栈初始为空 */
 
   /* BR 间接跳转映射表：默认无 */
   vm->func_addr = 0;

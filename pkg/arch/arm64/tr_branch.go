@@ -1,14 +1,14 @@
 package arm64
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/vmpacker/pkg/vm"
 )
 
 // ============================================================
-// 分支翻译 — B / B.cond / CBZ / CBNZ / BL / CSEL
+// 分支翻译 — B / B.cond / BL / BLR / BR / TBZ
+// CSEL/CBZ 已迁移到 tr_stack.go (trStackCSEL/trStackCBZ)
 // ============================================================
 
 func (t *Translator) trBranch(inst vm.Instruction) error {
@@ -69,31 +69,6 @@ func (t *Translator) trBranchCond(inst vm.Instruction) error {
 	return nil
 }
 
-func (t *Translator) trCBZ(inst vm.Instruction, isZero bool) error {
-	target := inst.Offset + int(inst.Imm)
-
-	rd, err := t.mapReg(inst.Rd)
-	if err != nil {
-		return err
-	}
-
-	t.emit(vm.OpCmpImm, rd)
-	t.emitU32(0)
-
-	var vmOp byte
-	if isZero {
-		vmOp = vm.OpJe
-	} else {
-		vmOp = vm.OpJne
-	}
-
-	t.emit(vmOp)
-	fixPos := t.pos()
-	t.emitU32(0)
-	t.fixups = append(t.fixups, branchFixup{vmOffset: fixPos, arm64Target: target})
-	return nil
-}
-
 func (t *Translator) trBL(inst vm.Instruction) error {
 	target := uint64(int64(t.funcAddr) + int64(inst.Offset) + inst.Imm)
 
@@ -117,94 +92,6 @@ func (t *Translator) trBR(inst vm.Instruction) error {
 		return err
 	}
 	t.emit(vm.OpBrReg, rn)
-	return nil
-}
-
-func (t *Translator) trCSEL(inst vm.Instruction) error {
-	rd, err := t.mapReg(inst.Rd)
-	if err != nil {
-		return err
-	}
-	rn, err := t.mapReg(inst.Rn)
-	if err != nil {
-		return err
-	}
-	rm, err := t.mapReg(inst.Rm)
-	if err != nil {
-		return err
-	}
-
-	if inst.Rn == vm.REG_XZR {
-		rn = 14
-		t.emit(vm.OpMovImm, rn)
-		t.emitU64(0)
-	}
-	if inst.Rm == vm.REG_XZR {
-		rm = 15
-		t.emit(vm.OpMovImm, rm)
-		t.emitU64(0)
-	}
-
-	var vmOp byte
-	switch inst.Cond {
-	case COND_EQ:
-		vmOp = vm.OpJe
-	case COND_NE:
-		vmOp = vm.OpJne
-	case COND_LT:
-		vmOp = vm.OpJl
-	case COND_GE:
-		vmOp = vm.OpJge
-	case COND_GT:
-		vmOp = vm.OpJgt
-	case COND_LE:
-		vmOp = vm.OpJle
-	case COND_CS:
-		vmOp = vm.OpJae
-	case COND_CC:
-		vmOp = vm.OpJb
-	case COND_HI:
-		vmOp = vm.OpJa
-	case COND_LS:
-		vmOp = vm.OpJbe
-	case COND_MI:
-		vmOp = vm.OpJl // MI: N==1 → FL_SIGN set
-	case COND_PL:
-		vmOp = vm.OpJge // PL: N==0 → FL_SIGN not set
-	default:
-		return fmt.Errorf("CSEL: 不支持的条件码 0x%X", inst.Cond)
-	}
-
-	t.emit(vmOp)
-	jccPos := t.pos()
-	t.emitU32(0)
-
-	op := Op(inst.Op)
-	switch op {
-	case CSINC:
-		t.emit(vm.OpMovReg, rd, rm)
-		t.emit(vm.OpAddImm, rd, rd)
-		t.emitU32(1)
-	case CSINV:
-		t.emit(vm.OpNot, rd, rm)
-	case CSNEG:
-		t.emit(vm.OpNot, rd, rm)
-		t.emit(vm.OpAddImm, rd, rd)
-		t.emitU32(1)
-	default:
-		t.emit(vm.OpMovReg, rd, rm)
-	}
-	t.emit(vm.OpJmp)
-	jmpPos := t.pos()
-	t.emitU32(0)
-
-	truePos := t.pos()
-	t.emit(vm.OpMovReg, rd, rn)
-	endPos := t.pos()
-
-	binary.LittleEndian.PutUint32(t.code[jccPos:], uint32(truePos))
-	binary.LittleEndian.PutUint32(t.code[jmpPos:], uint32(endPos))
-
 	return nil
 }
 

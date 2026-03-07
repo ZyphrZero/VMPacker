@@ -136,49 +136,6 @@ func (t *Translator) mapReg(arm64Reg int) (byte, error) {
 	return byte(arm64Reg), nil
 }
 
-// pickTemp 从 {14, 16, 15} 中选出不与 avoid 列表冲突的临时寄存器
-// 用于避免翻译中间值覆盖用户寄存器
-// 注意: R14 优先，R15 最后，避免频繁 clobber R15 导致用户 X15 值被破坏
-func (t *Translator) pickTemp(avoid ...byte) byte {
-	candidates := []byte{14, 16, 15}
-	for _, c := range candidates {
-		conflict := false
-		for _, a := range avoid {
-			if c == a {
-				conflict = true
-				break
-			}
-		}
-		if !conflict {
-			return c
-		}
-	}
-	// 理论上不会到这里（3 个候选 vs 最多 3 个 avoid）
-	return 14
-}
-
-// pickTemp2 选出两个不与 avoid 冲突的临时寄存器
-func (t *Translator) pickTemp2(avoid ...byte) (byte, byte) {
-	candidates := []byte{15, 14, 16}
-	var result []byte
-	for _, c := range candidates {
-		conflict := false
-		for _, a := range avoid {
-			if c == a {
-				conflict = true
-				break
-			}
-		}
-		if !conflict {
-			result = append(result, c)
-			if len(result) == 2 {
-				return result[0], result[1]
-			}
-		}
-	}
-	return 15, 14
-}
-
 // Translate 翻译整个函数
 func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult, error) {
 	result := &TranslateResult{TotalInsts: len(instructions)}
@@ -247,7 +204,6 @@ func (t *Translator) Translate(instructions []vm.Instruction) (*TranslateResult,
 	result.CodeLen = t.pos()
 
 	// ---- 追加 trailer (BR 间接跳转映射表 + reverse + oc_key 占位) ----
-	// 格式: [entries...][reverse(1B)][oc_key(4B)][map_count:u32][func_addr:u64][func_size:u32]
 	// entry: [arm64_off:u32][vm_off:u32]
 	// reverse 和 oc_key 由 packer 填充实际值
 	mapCount := uint32(len(t.labels))
@@ -276,111 +232,90 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 		t.emit(vm.OpNop)
 		return 0, nil
 
-	// ========== 数据处理（立即数）==========
+	// ========== 数据处理（立即数）—— 栈模式 ==========
 
 	case ADD_IMM:
-		return 0, t.trAluImm(inst, vm.OpAddImm)
+		return 0, t.trStackAluImm(inst, vm.OpSAdd)
 	case SUB_IMM:
-		return 0, t.trAluImm(inst, vm.OpSubImm)
+		return 0, t.trStackAluImm(inst, vm.OpSSub)
 	case ADDS_IMM, SUBS_IMM:
 		if inst.Rd == vm.REG_XZR {
+			// CMN/CMP Xn, #imm — 栈模式
 			rn, err := t.mapReg(inst.Rn)
 			if err != nil {
 				return 0, err
 			}
-			imm64 := uint64(inst.Imm)
 			if op == ADDS_IMM {
-				// CMN Xn, #imm = ADDS XZR, Xn, #imm → flags based on Xn + imm
-				if imm64 > 0xFFFFFFFF {
-					t.emit(vm.OpMovImm, 15)
-					t.emitU64(imm64)
-					t.emit(vm.OpAdd, 15, rn, 15)
-				} else {
-					t.emit(vm.OpAddImm, 15, rn)
-					t.emitU32(uint32(imm64))
-				}
-				t.emit(vm.OpCmpImm, 15)
-				t.emitU32(0)
+				// CMN: flags from Xn + imm
+				t.pushRegOrZero(inst.Rn, rn)
+				t.sPushImm(uint64(inst.Imm))
+				t.emit(vm.OpSAdd)
+				t.sPushImm32(0)
+				t.emit(vm.OpSCmp)
+				t.sDrop() // discard sum
 			} else {
-				// CMP Xn, #imm = SUBS XZR, Xn, #imm → flags based on Xn - imm
-				if imm64 > 0xFFFFFFFF {
-					t.emit(vm.OpMovImm, 15)
-					t.emitU64(imm64)
-					t.emit(vm.OpCmp, rn, 15)
-				} else {
-					t.emit(vm.OpCmpImm, rn)
-					t.emitU32(uint32(imm64))
-				}
+				// CMP: flags from Xn - imm
+				t.pushRegOrZero(inst.Rn, rn)
+				t.sPushImm(uint64(inst.Imm))
+				t.emit(vm.OpSCmp)
 			}
 			return 0, nil
 		}
 		if op == ADDS_IMM {
-			return 0, t.trAluImmFlags(inst, vm.OpAddImm, true)
+			return 0, t.trStackAluImmFlags(inst, vm.OpSAdd, true)
 		}
-		return 0, t.trAluImmFlags(inst, vm.OpSubImm, true)
+		return 0, t.trStackAluImmFlags(inst, vm.OpSSub, true)
 
 	case AND_IMM:
-		return 0, t.trAluImm(inst, vm.OpAndImm)
+		return 0, t.trStackAluImm(inst, vm.OpSAnd)
 	case ANDS_IMM:
 		if inst.Rd == vm.REG_XZR {
-			// TST Xn, #imm = ANDS XZR, Xn, #imm
+			// TST Xn, #imm — 栈模式
 			rn, err := t.mapReg(inst.Rn)
 			if err != nil {
 				return 0, err
 			}
-			imm64 := uint64(inst.Imm)
-			if imm64 > 0xFFFFFFFF {
-				t.emit(vm.OpMovImm, 15)
-				t.emitU64(imm64)
-				t.emit(vm.OpAnd, 15, rn, 15)
-			} else {
-				t.emit(vm.OpAndImm, 15, rn)
-				t.emitU32(uint32(imm64))
-			}
-			t.emit(vm.OpCmpImm, 15)
-			t.emitU32(0)
+			t.pushRegOrZero(inst.Rn, rn)
+			t.sPushImm(uint64(inst.Imm))
+			t.emit(vm.OpSAnd)
+			t.sPushImm32(0)
+			t.emit(vm.OpSCmp)
+			t.sDrop() // discard AND result
 			return 0, nil
 		}
-		return 0, t.trAluImmFlags(inst, vm.OpAndImm, true)
+		return 0, t.trStackAluImmFlags(inst, vm.OpSAnd, true)
 	case ORR_IMM:
-		return 0, t.trAluImm(inst, vm.OpOrImm)
+		return 0, t.trStackAluImm(inst, vm.OpSOr)
 	case EOR_IMM:
-		return 0, t.trAluImm(inst, vm.OpXorImm)
+		return 0, t.trStackAluImm(inst, vm.OpSXor)
 
 	case MOVZ:
-		return 0, t.trMov(inst)
+		return 0, t.trStackMov(inst)
 	case MOVK:
-		return 0, t.trMovK(inst)
+		return 0, t.trStackMovK(inst)
 	case MOVN:
-		return 0, t.trMovN(inst)
+		return 0, t.trStackMovN(inst)
 
 	// ========== 数据处理（寄存器）==========
 
 	case ADD_REG:
-		return 0, t.trAluReg(inst, vm.OpAdd)
+		return 0, t.trStackAluReg(inst, vm.OpSAdd)
 	case SUB_REG:
-		return 0, t.trAluReg(inst, vm.OpSub)
+		return 0, t.trStackAluReg(inst, vm.OpSSub)
 	case AND_REG:
-		return 0, t.trAluReg(inst, vm.OpAnd)
+		return 0, t.trStackAluReg(inst, vm.OpSAnd)
 	case ORR_REG:
 		if inst.Rn == vm.REG_XZR {
-			rd, err := t.mapReg(inst.Rd)
-			if err != nil {
-				return 0, err
-			}
-			rm, err := t.mapReg(inst.Rm)
-			if err != nil {
-				return 0, err
-			}
-			t.emit(vm.OpMovReg, rd, rm)
-			return 0, nil
+			// MOV alias: ORR Xd, XZR, Xm → 栈模式
+			return 0, t.trStackMovReg(vm.Instruction{Op: inst.Op, Rd: inst.Rd, Rn: inst.Rm, SF: inst.SF})
 		}
-		return 0, t.trAluReg(inst, vm.OpOr)
+		return 0, t.trStackAluReg(inst, vm.OpSOr)
 	case EOR_REG:
-		return 0, t.trAluReg(inst, vm.OpXor)
+		return 0, t.trStackAluReg(inst, vm.OpSXor)
 	case EON:
-		return 0, t.trEON(inst)
+		return 0, t.trStackEON(inst) // 栈模式
 	case MVN:
+		// MVN Xd, Xm[, shift] — 栈模式
 		rd, err := t.mapReg(inst.Rd)
 		if err != nil {
 			return 0, err
@@ -389,30 +324,30 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 		if err != nil {
 			return 0, err
 		}
+		t.sVload(rm)
 		if inst.Shift != 0 {
-			t.emit(vm.OpShlImm, 15, rm)
-			t.emitU32(uint32(inst.Shift))
-			t.emit(vm.OpNot, rd, 15)
-		} else {
-			t.emit(vm.OpNot, rd, rm)
+			t.emitShiftOnStack(0, uint32(inst.Shift), inst.SF) // LSL
 		}
+		t.emit(vm.OpSNot)
 		if !inst.SF {
-			t.trunc32(rd)
+			t.emit(vm.OpSTrunc32)
 		}
+		t.sVstore(rd)
 		return 0, nil
 	case MUL:
-		return 0, t.trAluReg(inst, vm.OpMul)
+		return 0, t.trStackAluReg(inst, vm.OpSMul)
 	case LSL_REG:
-		return 0, t.trAluReg(inst, vm.OpShl)
+		return 0, t.trStackAluReg(inst, vm.OpSShl)
 	case LSR_REG:
-		return 0, t.trAluReg(inst, vm.OpShr)
+		return 0, t.trStackAluReg(inst, vm.OpSShr)
 	case ASR_REG:
-		return 0, t.trAluReg(inst, vm.OpAsr)
+		return 0, t.trStackAluReg(inst, vm.OpSAsr)
 	case ROR_REG:
-		return 0, t.trAluReg(inst, vm.OpRor)
+		return 0, t.trStackAluReg(inst, vm.OpSRor)
 
 	case ADDS_REG, SUBS_REG:
 		if inst.Rd == vm.REG_XZR {
+			// CMN/CMP Xn, Xm — 栈模式
 			rn, err := t.mapReg(inst.Rn)
 			if err != nil {
 				return 0, err
@@ -422,23 +357,29 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 				return 0, err
 			}
 			if op == ADDS_REG {
-				// CMN Xn, Xm = ADDS XZR, Xn, Xm → flags based on Xn + Xm
-				t.emit(vm.OpAdd, 15, rn, rm)
-				t.emit(vm.OpCmpImm, 15)
-				t.emitU32(0)
+				// CMN: VLOAD(rn) VLOAD(rm) S_ADD PUSH(0) S_CMP DROP
+				t.pushRegOrZero(inst.Rn, rn)
+				t.pushRegOrZero(inst.Rm, rm)
+				t.emit(vm.OpSAdd)
+				t.sPushImm32(0)
+				t.emit(vm.OpSCmp)
+				t.sDrop()
 			} else {
-				// CMP Xn, Xm = SUBS XZR, Xn, Xm
-				t.emit(vm.OpCmp, rn, rm)
+				// CMP: VLOAD(rn) VLOAD(rm) S_CMP
+				t.pushRegOrZero(inst.Rn, rn)
+				t.pushRegOrZero(inst.Rm, rm)
+				t.emit(vm.OpSCmp)
 			}
 			return 0, nil
 		}
 		if op == ADDS_REG {
-			return 0, t.trAluRegFlags(inst, vm.OpAdd, true)
+			return 0, t.trStackAluRegFlags(inst, vm.OpSAdd, true)
 		}
-		return 0, t.trAluRegFlags(inst, vm.OpSub, true)
+		return 0, t.trStackAluRegFlags(inst, vm.OpSSub, true)
 
 	case ANDS_REG:
 		if inst.Rd == vm.REG_XZR {
+			// TST Xn, Xm — 栈模式
 			rn, err := t.mapReg(inst.Rn)
 			if err != nil {
 				return 0, err
@@ -447,46 +388,48 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 			if err != nil {
 				return 0, err
 			}
-			t.emit(vm.OpAnd, 15, rn, rm)
-			t.emit(vm.OpCmpImm, 15)
-			t.emitU32(0)
+			t.pushRegOrZero(inst.Rn, rn)
+			t.pushRegOrZero(inst.Rm, rm)
+			t.emit(vm.OpSAnd)
+			t.sPushImm32(0)
+			t.emit(vm.OpSCmp)
+			t.sDrop()
 			return 0, nil
 		}
-		return 0, t.trAluReg(inst, vm.OpAnd)
+		return 0, t.trStackAluReg(inst, vm.OpSAnd)
 
 	case BIC:
-		return 0, t.trBitLogicalNot(inst, vm.OpAnd, false)
+		return 0, t.trStackBitLogicalNot(inst, vm.OpSAnd, false)
 	case BICS:
 		if inst.Rd == vm.REG_XZR {
-			// TST-like: BICS with Rd=XZR just sets flags
-			return 0, t.trBitLogicalNot(inst, vm.OpAnd, true)
+			return 0, t.trStackBitLogicalNot(inst, vm.OpSAnd, true)
 		}
-		return 0, t.trBitLogicalNot(inst, vm.OpAnd, true)
+		return 0, t.trStackBitLogicalNot(inst, vm.OpSAnd, true)
 	case ORN:
-		return 0, t.trBitLogicalNot(inst, vm.OpOr, false)
+		return 0, t.trStackBitLogicalNot(inst, vm.OpSOr, false)
 
 	// ========== 位域操作 ==========
 
 	case UBFM:
-		return 0, t.trUBFM(inst)
+		return 0, t.trStackUBFM(inst)
 	case SBFM:
 		return 0, t.trSBFM(inst)
 	case BFM:
-		return 0, t.trBFM(inst)
+		return 0, t.trStackBFM(inst)
 
 	// ========== 加载/存储 ==========
 
 	case LDR_IMM, LDRB_IMM, LDRH_IMM, LDRSB_IMM, LDRSH_IMM, LDRSW_IMM:
-		return 0, t.trLoad(inst)
+		return 0, t.trStackLoad(inst)
 	case LDR_LIT:
-		return 0, t.trLdrLiteral(inst)
+		return 0, t.trStackLdrLiteral(inst)
 	case STR_IMM, STRB_IMM, STRH_IMM:
-		return 0, t.trStore(inst)
+		return 0, t.trStackStore(inst)
 
 	case STP:
-		return 0, t.trSTP(inst)
+		return 0, t.trStackSTP(inst)
 	case LDP:
-		return 0, t.trLDP(inst)
+		return 0, t.trStackLDP(inst)
 
 	// ========== 分支 ==========
 
@@ -495,9 +438,9 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 	case B_COND:
 		return 0, t.trBranchCond(inst)
 	case CBZ:
-		return 0, t.trCBZ(inst, true)
+		return 0, t.trStackCBZ(inst, true)
 	case CBNZ:
-		return 0, t.trCBZ(inst, false)
+		return 0, t.trStackCBZ(inst, false)
 	case BL:
 		return 0, t.trBL(inst)
 	case BLR:
@@ -510,45 +453,37 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 
 	// ========== 条件选择 ==========
 	case CSEL:
-		return 0, t.trCSEL(inst)
+		return 0, t.trStackCSEL(inst)
 	case CSINC:
-		return 0, t.trCSEL(inst)
+		return 0, t.trStackCSEL(inst)
 	case CSINV:
-		return 0, t.trCSEL(inst)
+		return 0, t.trStackCSEL(inst)
 	case CSNEG:
-		return 0, t.trCSEL(inst)
+		return 0, t.trStackCSEL(inst)
 	case MADD:
-		return 0, t.trMADD(inst, false)
+		return 0, t.trStackMADD(inst, false)
 	case MSUB:
-		return 0, t.trMADD(inst, true)
+		return 0, t.trStackMADD(inst, true)
 	case SMADDL:
-		return 0, t.trSMADDL(inst, false)
+		return 0, t.trStackSMADDL(inst, false)
 	case SMSUBL:
-		return 0, t.trSMADDL(inst, true)
+		return 0, t.trStackSMADDL(inst, true)
 	case UMADDL:
-		return 0, t.trUMADDL(inst, false)
+		return 0, t.trStackUMADDL(inst, false)
 	case UMSUBL:
-		return 0, t.trUMADDL(inst, true)
+		return 0, t.trStackUMADDL(inst, true)
 	case UMULH:
-		return 0, t.trUmulh(inst)
+		return 0, t.trStackUnary(inst, vm.OpSUmulh) // UMULH 是二元但不设 flags
 
-	// ========== 扩展寄存器加减 (T4) ==========
+	// ========== 扩展寄存器加减 (T4) — 栈模式 ==========
 	case ADD_EXT:
-		return 0, t.trAddSubExt(inst, vm.OpAdd, false)
+		return 0, t.trStackAddSubExt(inst, vm.OpSAdd, false)
 	case SUB_EXT:
-		return 0, t.trAddSubExt(inst, vm.OpSub, false)
+		return 0, t.trStackAddSubExt(inst, vm.OpSSub, false)
 	case ADDS_EXT:
-		if inst.Rd == vm.REG_XZR {
-			// CMN Xn, Xm{ext} = ADDS XZR, Xn, ext(Xm)
-			return 0, t.trAddSubExt(inst, vm.OpAdd, true)
-		}
-		return 0, t.trAddSubExt(inst, vm.OpAdd, true)
+		return 0, t.trStackAddSubExt(inst, vm.OpSAdd, true)
 	case SUBS_EXT:
-		if inst.Rd == vm.REG_XZR {
-			// CMP Xn, Xm{ext} = SUBS XZR, Xn, ext(Xm)
-			return 0, t.trAddSubExt(inst, vm.OpSub, true)
-		}
-		return 0, t.trAddSubExt(inst, vm.OpSub, true)
+		return 0, t.trStackAddSubExt(inst, vm.OpSSub, true)
 
 	// ========== TBZ/TBNZ (T5) ==========
 	case TBZ:
@@ -572,47 +507,47 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 
 	// ========== UDIV/SDIV ==========
 	case UDIV:
-		return 0, t.trUDIV(inst)
+		return 0, t.trStackAluReg(inst, vm.OpSUdiv)
 	case SDIV:
-		return 0, t.trSDIV(inst)
+		return 0, t.trStackAluReg(inst, vm.OpSSdiv)
 
 	// ========== MRS ==========
 	case MRS:
-		return 0, t.trMRS(inst)
+		return 0, t.trMRS(inst) // 系统寄存器保留原路由
 
-	// ========== SMULH/CLZ/CLS/RBIT/REV ==========
+	// ========== SMULH/CLZ/CLS/RBIT/REV — 栈模式 ==========
 	case SMULH:
-		return 0, t.trSmulh(inst)
+		return 0, t.trStackAluReg(inst, vm.OpSSmulh)
 	case CLZ:
-		return 0, t.trUnary(inst, vm.OpClz)
+		return 0, t.trStackUnary(inst, vm.OpSClz)
 	case CLS:
-		return 0, t.trUnary(inst, vm.OpCls)
+		return 0, t.trStackUnary(inst, vm.OpSCls)
 	case RBIT:
-		return 0, t.trUnary(inst, vm.OpRbit)
+		return 0, t.trStackUnary(inst, vm.OpSRbit)
 	case REV:
-		return 0, t.trUnary(inst, vm.OpRev)
+		return 0, t.trStackUnary(inst, vm.OpSRev)
 	case REV16:
-		return 0, t.trUnary(inst, vm.OpRev16)
+		return 0, t.trStackUnary(inst, vm.OpSRev16)
 	case REV32:
-		return 0, t.trUnary(inst, vm.OpRev32)
+		return 0, t.trStackUnary(inst, vm.OpSRev32)
 
-	// ========== ADC/ADCS/SBC/SBCS ==========
+	// ========== ADC/ADCS/SBC/SBCS — 栈模式 ==========
 	case ADC:
-		return 0, t.trAluReg(inst, vm.OpAdc)
+		return 0, t.trStackAluReg(inst, vm.OpSAdc)
 	case ADCS:
-		return 0, t.trAluRegFlags(inst, vm.OpAdc, true)
+		return 0, t.trStackAluRegFlags(inst, vm.OpSAdc, true)
 	case SBC:
-		return 0, t.trAluReg(inst, vm.OpSbc)
+		return 0, t.trStackAluReg(inst, vm.OpSSbc)
 	case SBCS:
-		return 0, t.trAluRegFlags(inst, vm.OpSbc, true)
+		return 0, t.trStackAluRegFlags(inst, vm.OpSSbc, true)
 
-	// ========== 寄存器偏移加载/存储 ==========
+	// ========== 寄存器偏移加载/存储 — 栈模式 ==========
 	case LDR_REG, LDRB_REG, LDRH_REG:
-		return 0, t.trLoadReg(inst)
+		return 0, t.trStackLoadReg(inst)
 	case LDRSB_REG, LDRSH_REG, LDRSW_REG:
-		return 0, t.trLoadRegSigned(inst)
+		return 0, t.trStackLoadRegSigned(inst)
 	case STR_REG, STRB_REG, STRH_REG:
-		return 0, t.trStoreReg(inst)
+		return 0, t.trStackStoreReg(inst)
 
 	// ========== ADRP ==========
 	case ADRP:
@@ -640,7 +575,7 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 
 	// ========== 位域提取 ==========
 	case EXTR:
-		return 0, t.trEXTR(inst)
+		return 0, t.trStackEXTR(inst)
 
 	// ========== NOP 化指令 (Batch 4/6/7) ==========
 	case DMB, DSB, ISB, WFE, WFI, YIELD_ARM, CLREX, MSR_WRITE, PRFM:
@@ -660,13 +595,13 @@ func (t *Translator) translateOne(instructions []vm.Instruction, idx int) (int, 
 
 	// ========== LDPSW (Batch 8) ==========
 	case LDPSW:
-		return 0, t.trLdpsw(inst)
+		return 0, t.trStackLdpsw(inst)
 
 	// ========== Atomic LSE (Batch 8) ==========
 	case LDADD:
-		return 0, t.trLdadd(inst)
+		return 0, t.trStackLdadd(inst)
 	case CAS:
-		return 0, t.trCas(inst)
+		return 0, t.trStackCas(inst)
 
 	default:
 		return 0, fmt.Errorf("不支持的指令类型")

@@ -119,6 +119,65 @@ const (
 	// ADC/SBC (带进位加减)
 	OpAdc byte = 0x2C // ADC Xd, Xn, Xm            4B: [op][d][n][m]
 	OpSbc byte = 0x2D // SBC Xd, Xn, Xm            4B: [op][d][n][m]
+
+	// ============================================================
+	// 栈机器操作码 (Stack Machine Opcodes)
+	// 操作 eval_stk[] 操作栈，彻底消除寄存器冲突
+	// 值域选择: 仅使用与旧操作码不冲突的空闲字节值
+	// ============================================================
+
+	// 栈 ↔ 寄存器传输
+	OpSVload     byte = 0x01 // push R[r]             2B: [op][r]
+	OpSVstore    byte = 0x02 // pop → R[r]            2B: [op][r]
+	OpSPushImm32 byte = 0x03 // push imm32            5B: [op][imm32]
+	OpSPushImm64 byte = 0x04 // push imm64            9B: [op][imm64]
+
+	// 栈控制
+	OpSDup  byte = 0x05 // dup 栈顶    1B
+	OpSSwap byte = 0x06 // swap 栈顶   1B
+	OpSDrop byte = 0x07 // pop 丢弃    1B
+
+	// 栈 ALU (二元)
+	OpSAdd   byte = 0x09 // pop b,a → push a+b    1B
+	OpSSub   byte = 0x0A // pop b,a → push a-b    1B
+	OpSMul   byte = 0x0B // pop b,a → push a*b    1B
+	OpSXor   byte = 0x0C // pop b,a → push a^b    1B
+	OpSAnd   byte = 0x0D // pop b,a → push a&b    1B
+	OpSOr    byte = 0x0E // pop b,a → push a|b    1B
+	OpSShl   byte = 0x0F // pop b,a → push a<<b   1B
+	OpSShr   byte = 0x10 // pop b,a → push a>>b   1B
+	OpSAsr   byte = 0x11 // pop b,a → push asr    1B
+	OpSRor   byte = 0x12 // pop b,a → push ror    1B
+	OpSUmulh byte = 0x13 // pop b,a → push umulh  1B
+	OpSSmulh byte = 0x14 // pop b,a → push smulh  1B
+	OpSUdiv  byte = 0x7B // pop b,a → push a/b    1B
+	OpSSdiv  byte = 0x7C // pop b,a → push sdiv   1B
+	OpSAdc   byte = 0x7D // pop b,a → push a+b+C  1B
+	OpSSbc   byte = 0x7E // pop b,a → push sbc    1B
+
+	// 栈 ALU (一元)
+	OpSNot     byte = 0x7F // pop a → push ~a       1B
+	OpSClz     byte = 0x80 // pop a → push clz(a)   1B
+	OpSCls     byte = 0x81 // pop a → push cls(a)   1B
+	OpSRbit    byte = 0x82 // pop a → push rbit(a)  1B
+	OpSRev     byte = 0x84 // pop a → push bswap64  1B
+	OpSRev16   byte = 0x85 // pop a → push rev16    1B
+	OpSRev32   byte = 0x86 // pop a → push rev32    1B
+	OpSTrunc32 byte = 0x87 // pop a → push a&FFFFFFFF 1B
+	OpSSext32  byte = 0x88 // pop a → push sext32   1B
+
+	// 栈比较
+	OpSCmp byte = 0x89 // pop b,a → set flags   1B
+
+	// 栈内存访问
+	OpSLd8  byte = 0x8A // pop addr → push *(u8*)   1B
+	OpSLd16 byte = 0x8B // pop addr → push *(u16*)  1B
+	OpSLd32 byte = 0x92 // pop addr → push *(u32*)  1B
+	OpSLd64 byte = 0x93 // pop addr → push *(u64*)  1B
+	OpSSt8  byte = 0x94 // pop val,addr → st8       1B
+	OpSSt16 byte = 0x95 // pop val,addr → st16      1B
+	OpSSt32 byte = 0x96 // pop val,addr → st32      1B
+	OpSSt64 byte = 0x97 // pop val,addr → st64      1B
 )
 
 // 标志位
